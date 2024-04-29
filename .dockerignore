@@ -1,0 +1,9 @@
+*.wav
+LICENSE
+Makefile
+README.md
+.mise.toml
+.DS_Store
+.vscode
+.env
+.gitignore

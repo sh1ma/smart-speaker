@@ -1,0 +1,12 @@
+services:
+  listener:
+    build:
+      context: ./listener
+    env_file:
+      - ./listener/.env
+    ports:
+      - "8081:8081"
+  voicevox:
+    image: "voicevox/voicevox_engine"
+    ports:
+      - "50021:50021"
