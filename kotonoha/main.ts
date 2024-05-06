@@ -8,6 +8,7 @@ import { pull } from "npm:langchain/hub"
 import { ChatOpenAI } from "npm:@langchain/openai"
 
 import { Tool } from "npm:@langchain/core/tools"
+import { Timer } from "./skills/timer.ts"
 
 /**
  * The Calculator class is a tool used to evaluate mathematical
@@ -30,7 +31,7 @@ export class TextCounter extends Tool {
 
   name = "text_counter"
 
-  /** @ignore */
+  // deno-lint-ignore require-await
   async _call(input: string) {
     return input.length.toString()
   }
@@ -52,15 +53,15 @@ const prompt = await pull<ChatPromptTemplate>(
   "hwchase17/openai-functions-agent"
 )
 
-const tools = [new TextCounter()]
+const tools = [new TextCounter(), new Timer()]
 
-const agent = await createOpenAIFunctionsAgent({
+export const agent = await createOpenAIFunctionsAgent({
   llm,
   tools,
   prompt,
 })
 
-const agentExecutor = new AgentExecutor({
+export const agentExecutor = new AgentExecutor({
   agent,
   tools,
 })
@@ -90,7 +91,98 @@ app.post("/talk", async (c) => {
   return c.json(chatResp)
 })
 
+app.post("/ask", async (c) => {
+  const wav = await c.req.blob()
+  const audio = await handleAsk(wav)
+  return c.json(audio)
+})
+
 // Learn more at https://deno.land/manual/examples/module_metadata#concepts
 if (import.meta.main) {
   Deno.serve({ port: 8081 }, app.fetch)
+}
+
+export const handleAsk = async (wav: Blob) => {
+  const transcription = await transcribeFromWav(wav)
+  const text = transcription.text
+  const talkResult = await talkToAgent(text)
+
+  try {
+    console.log(`音声を生成: ${talkResult.output}`)
+    const audio = await synthesis(talkResult.output, "3", { speedScale: "1.3" })
+    return audio
+  } catch (e) {
+    console.error(e)
+    throw new Error("Failed to synthesize audio")
+  }
+}
+
+const transcribeFromWav = async (wav: Blob) => {
+  const file = await toFile(wav, "audio.wav")
+  return await openai.audio.transcriptions.create({
+    model: "whisper-1",
+    file: file,
+    language: "ja",
+  })
+}
+
+const talkToAgent = async (prompt: string) => {
+  return await agentExecutor.invoke({ input: prompt })
+}
+
+// Voicevox
+
+const voicevoxURL = "http://localhost:50021"
+
+type GetVoicevoxAudioQueryParams = {
+  speaker: string
+  text: string
+}
+
+const getVoicevoxAudioQuery = async ({
+  speaker,
+  text,
+}: GetVoicevoxAudioQueryParams) => {
+  const query = new URLSearchParams({ speaker, text })
+  const endpointWithQuery = new URL(`${voicevoxURL}/audio_query?${query}`)
+
+  const resp = await fetch(endpointWithQuery, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  })
+  return await resp.json()
+}
+
+type VoicevoxAudioQuery = {
+  speedScale: string
+}
+
+export const synthesis = async (
+  text: string,
+  speakerId: string,
+  customAudioQuery: VoicevoxAudioQuery
+) => {
+  const audioQuery = await getVoicevoxAudioQuery({ speaker: "3", text })
+  const customizedAudioquery = { ...audioQuery, ...customAudioQuery }
+
+  const synthesisRequestQuery = new URLSearchParams({ speaker: speakerId })
+  const endpointWithQuery = new URL(
+    `${voicevoxURL}/synthesis?${synthesisRequestQuery}`
+  )
+
+  const resp = await fetch(endpointWithQuery, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(customizedAudioquery),
+  })
+
+  if (!resp.ok) {
+    throw new Error("Failed to synthesis audio")
+  }
+
+  return await resp.blob()
 }

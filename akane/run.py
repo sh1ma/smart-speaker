@@ -10,7 +10,7 @@ kotonoha_host = os.environ.get("KOTONOHA_HOST", "localhost")
 kotonoha_port = os.environ.get("KOTONOHA_PORT", "8081")
 WAKE_WORD = os.environ.get("WAKE_WORD", "ハロー")
 
-host = "locahost"
+host = "localhost"
 port = 10500
 
 
@@ -43,18 +43,19 @@ while True:
     data = s.recv(1024)
     if found_word := pattern.search(data.decode("utf-8")):
         print(found_word.group(1))
-        if found_word.group(1) == "うさみ":
+        if found_word.group(1) == "おーけーうさみ":
             result = subprocess.run(["adinrec", "out.wav"])
             with open("out.wav", "rb") as f:
                 response = requests.post(
                     f"{url}/transcribe",
                     data=f,
                 )
-                response
+                print(response.json())
                 talked = requests.post(
                     f"{url}/talk",
                     json={"text": response.json()["text"]},
                 ).json()
+
                 resp_wav = synthesis(talked["output"])
 
                 with open("resp.wav", "wb") as f:

@@ -1,9 +1,9 @@
 services:
   listener:
     build:
-      context: ./listener
+      context: ./kotonoha
     env_file:
-      - ./listener/.env
+      - ./kotonoha/.env
     ports:
       - "8081:8081"
   voicevox:
